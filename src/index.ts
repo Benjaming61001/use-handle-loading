@@ -102,12 +102,20 @@ export class HandleLoadingBuilder {
       ...args: TArgs
     ) => {
       const merged: HandleLoadingOptions<T> = {
-        setLoading: overrides.setLoading ?? defaults.setLoading as (loading: boolean) => void,
-        validateSuccess: overrides.validateSuccess ?? defaults.validateSuccess as (result: T) => boolean,
-        validateError: overrides.validateError ?? defaults.validateError as (error: unknown) => boolean,
-        validateFinally: overrides.validateFinally ?? defaults.validateFinally as () => boolean,
-        onSuccess: [...(defaults.onSuccess as ((result: T) => void)[]), ...(overrides.onSuccess ?? [])],
-        onError: [...(defaults.onError as ((error: unknown) => void)[]), ...(overrides.onError ?? [])],
+        setLoading: overrides.setLoading ?? (defaults.setLoading as (loading: boolean) => void),
+        validateSuccess:
+          overrides.validateSuccess ?? (defaults.validateSuccess as (result: T) => boolean),
+        validateError:
+          overrides.validateError ?? (defaults.validateError as (error: unknown) => boolean),
+        validateFinally: overrides.validateFinally ?? (defaults.validateFinally as () => boolean),
+        onSuccess: [
+          ...(defaults.onSuccess as ((result: T) => void)[]),
+          ...(overrides.onSuccess ?? [])
+        ],
+        onError: [
+          ...(defaults.onError as ((error: unknown) => void)[]),
+          ...(overrides.onError ?? [])
+        ],
         onFinally: [...(defaults.onFinally as (() => void)[]), ...(overrides.onFinally ?? [])]
       }
       return handleLoading(callback, merged, ...args)

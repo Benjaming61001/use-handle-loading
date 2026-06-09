@@ -158,9 +158,7 @@ describe('HandleLoadingBuilder', () => {
 
   it('builds handler that calls default success', async () => {
     const onSuccess = vi.fn()
-    const handler = createHandleLoading()
-      .setSuccess(onSuccess)
-      .build()
+    const handler = createHandleLoading().setSuccess(onSuccess).build()
     const callback = vi.fn().mockResolvedValue('result')
     await handler(callback)
     expect(onSuccess).toHaveBeenCalledWith('result')
@@ -168,9 +166,7 @@ describe('HandleLoadingBuilder', () => {
 
   it('builds handler that calls default error', async () => {
     const onError = vi.fn()
-    const handler = createHandleLoading()
-      .setError(onError)
-      .build()
+    const handler = createHandleLoading().setError(onError).build()
     const callback = vi.fn().mockRejectedValue(new Error('fail'))
     await handler(callback)
     expect(onError).toHaveBeenCalled()
@@ -179,9 +175,7 @@ describe('HandleLoadingBuilder', () => {
   it('builds handler that merges overrides', async () => {
     const defaultSuccess = vi.fn()
     const overrideSuccess = vi.fn()
-    const handler = createHandleLoading()
-      .setSuccess(defaultSuccess)
-      .build()
+    const handler = createHandleLoading().setSuccess(defaultSuccess).build()
     const callback = vi.fn().mockResolvedValue('result')
     await handler(callback, { onSuccess: [overrideSuccess] })
     expect(defaultSuccess).toHaveBeenCalledWith('result')
@@ -191,9 +185,7 @@ describe('HandleLoadingBuilder', () => {
   it('override setLoading takes precedence', async () => {
     const defaultSetLoading = vi.fn()
     const overrideSetLoading = vi.fn()
-    const handler = createHandleLoading()
-      .setLoading(defaultSetLoading)
-      .build()
+    const handler = createHandleLoading().setLoading(defaultSetLoading).build()
     const callback = vi.fn().mockResolvedValue('result')
     await handler(callback, { setLoading: overrideSetLoading })
     expect(defaultSetLoading).not.toHaveBeenCalled()

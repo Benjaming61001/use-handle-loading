@@ -1,6 +1,6 @@
 {
   "name": "@benjaming61001/use-handle-loading",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A lightweight TypeScript utility for managing async loading states with success/error/finally hooks.",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
@@ -19,7 +19,11 @@
     "build": "tsup src/index.ts --format cjs,esm --dts",
     "prepublishOnly": "npm run build",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "lint": "oxlint src/",
+    "lint:fix": "oxlint src/ --fix",
+    "format": "oxfmt src/",
+    "format:fix": "oxfmt src/ --write"
   },
   "repository": {
     "type": "git",
@@ -39,6 +43,8 @@
   },
   "homepage": "https://github.com/Benjaming61001/use-handle-loading#readme",
   "devDependencies": {
+    "oxfmt": "^0.54.0",
+    "oxlint": "^1.69.0",
     "tsup": "^8.5.0",
     "typescript": "^5.9.3",
     "vitest": "^4.1.8"
