@@ -1,6 +1,6 @@
 {
   "name": "@benjaming61001/use-handle-loading",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "A lightweight TypeScript utility for managing async loading states with success/error/finally hooks.",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
@@ -25,7 +25,13 @@
     "type": "git",
     "url": "git+https://github.com/Benjaming61001/use-handle-loading.git"
   },
-  "keywords": ["loading", "async", "hooks", "typescript", "utility"],
+  "keywords": [
+    "loading",
+    "async",
+    "hooks",
+    "typescript",
+    "utility"
+  ],
   "author": "",
   "license": "MIT",
   "bugs": {
