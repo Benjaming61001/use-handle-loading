@@ -1,52 +1,52 @@
-import { describe, it, expect, vi } from 'vitest'
-import { handleLoading, createHandleLoading, HandleLoadingBuilder } from './index'
+import { describe, it, expect, vi } from "vitest"
+import { handleLoading, createHandleLoading, HandleLoadingBuilder } from "./index"
 
-describe('handleLoading', () => {
-  it('returns result on success', async () => {
-    const callback = vi.fn().mockResolvedValue('result')
+describe("handleLoading", () => {
+  it("returns result on success", async () => {
+    const callback = vi.fn().mockResolvedValue("result")
     const result = await handleLoading(callback)
-    expect(result).toBe('result')
+    expect(result).toBe("result")
   })
 
-  it('returns undefined on error', async () => {
-    const callback = vi.fn().mockRejectedValue(new Error('fail'))
+  it("returns undefined on error", async () => {
+    const callback = vi.fn().mockRejectedValue(new Error("fail"))
     const result = await handleLoading(callback)
     expect(result).toBeUndefined()
   })
 
-  it('forwards args to callback', async () => {
-    const callback = vi.fn().mockResolvedValue('result')
-    await handleLoading(callback, {}, 'a', 'b')
-    expect(callback).toHaveBeenCalledWith('a', 'b')
+  it("forwards args to callback", async () => {
+    const callback = vi.fn().mockResolvedValue("result")
+    await handleLoading(callback, {}, "a", "b")
+    expect(callback).toHaveBeenCalledWith("a", "b")
   })
 
-  it('calls setLoading true then false', async () => {
+  it("calls setLoading true then false", async () => {
     const setLoading = vi.fn()
-    const callback = vi.fn().mockResolvedValue('result')
+    const callback = vi.fn().mockResolvedValue("result")
     await handleLoading(callback, { setLoading })
     expect(setLoading).toHaveBeenCalledWith(true)
     expect(setLoading).toHaveBeenCalledWith(false)
     expect(setLoading).toHaveBeenCalledTimes(2)
   })
 
-  it('calls setLoading false even on error', async () => {
+  it("calls setLoading false even on error", async () => {
     const setLoading = vi.fn()
-    const callback = vi.fn().mockRejectedValue(new Error('fail'))
+    const callback = vi.fn().mockRejectedValue(new Error("fail"))
     await handleLoading(callback, { setLoading })
     expect(setLoading).toHaveBeenCalledWith(true)
     expect(setLoading).toHaveBeenCalledWith(false)
   })
 
-  it('calls onSuccess callbacks', async () => {
+  it("calls onSuccess callbacks", async () => {
     const onSuccess = vi.fn()
-    const callback = vi.fn().mockResolvedValue('result')
+    const callback = vi.fn().mockResolvedValue("result")
     await handleLoading(callback, { onSuccess: [onSuccess] })
-    expect(onSuccess).toHaveBeenCalledWith('result')
+    expect(onSuccess).toHaveBeenCalledWith("result")
   })
 
-  it('skips onSuccess when validateSuccess returns false', async () => {
+  it("skips onSuccess when validateSuccess returns false", async () => {
     const onSuccess = vi.fn()
-    const callback = vi.fn().mockResolvedValue('result')
+    const callback = vi.fn().mockResolvedValue("result")
     await handleLoading(callback, {
       onSuccess: [onSuccess],
       validateSuccess: () => false
@@ -54,17 +54,17 @@ describe('handleLoading', () => {
     expect(onSuccess).not.toHaveBeenCalled()
   })
 
-  it('calls onError callbacks', async () => {
+  it("calls onError callbacks", async () => {
     const onError = vi.fn()
-    const error = new Error('fail')
+    const error = new Error("fail")
     const callback = vi.fn().mockRejectedValue(error)
     await handleLoading(callback, { onError: [onError] })
     expect(onError).toHaveBeenCalledWith(error)
   })
 
-  it('skips onError when validateError returns false', async () => {
+  it("skips onError when validateError returns false", async () => {
     const onError = vi.fn()
-    const callback = vi.fn().mockRejectedValue(new Error('fail'))
+    const callback = vi.fn().mockRejectedValue(new Error("fail"))
     await handleLoading(callback, {
       onError: [onError],
       validateError: () => false
@@ -72,23 +72,23 @@ describe('handleLoading', () => {
     expect(onError).not.toHaveBeenCalled()
   })
 
-  it('calls onFinally callbacks', async () => {
+  it("calls onFinally callbacks", async () => {
     const onFinally = vi.fn()
-    const callback = vi.fn().mockResolvedValue('result')
+    const callback = vi.fn().mockResolvedValue("result")
     await handleLoading(callback, { onFinally: [onFinally] })
     expect(onFinally).toHaveBeenCalledTimes(1)
   })
 
-  it('calls onFinally on error', async () => {
+  it("calls onFinally on error", async () => {
     const onFinally = vi.fn()
-    const callback = vi.fn().mockRejectedValue(new Error('fail'))
+    const callback = vi.fn().mockRejectedValue(new Error("fail"))
     await handleLoading(callback, { onFinally: [onFinally] })
     expect(onFinally).toHaveBeenCalledTimes(1)
   })
 
-  it('skips onFinally when validateFinally returns false', async () => {
+  it("skips onFinally when validateFinally returns false", async () => {
     const onFinally = vi.fn()
-    const callback = vi.fn().mockResolvedValue('result')
+    const callback = vi.fn().mockResolvedValue("result")
     await handleLoading(callback, {
       onFinally: [onFinally],
       validateFinally: () => false
@@ -96,117 +96,109 @@ describe('handleLoading', () => {
     expect(onFinally).not.toHaveBeenCalled()
   })
 
-  it('calls multiple success callbacks in order', async () => {
+  it("calls multiple success callbacks in order", async () => {
     const calls: string[] = []
-    const onSuccess1 = vi.fn().mockImplementation(() => calls.push('first'))
-    const onSuccess2 = vi.fn().mockImplementation(() => calls.push('second'))
-    const callback = vi.fn().mockResolvedValue('result')
+    const onSuccess1 = vi.fn().mockImplementation(() => calls.push("first"))
+    const onSuccess2 = vi.fn().mockImplementation(() => calls.push("second"))
+    const callback = vi.fn().mockResolvedValue("result")
     await handleLoading(callback, { onSuccess: [onSuccess1, onSuccess2] })
-    expect(calls).toEqual(['first', 'second'])
+    expect(calls).toEqual(["first", "second"])
   })
 })
 
-describe('createHandleLoading', () => {
-  it('returns HandleLoadingBuilder', () => {
+describe("createHandleLoading", () => {
+  it("returns HandleLoadingBuilder", () => {
     const builder = createHandleLoading()
     expect(builder).toBeInstanceOf(HandleLoadingBuilder)
   })
 })
 
-describe('HandleLoadingBuilder', () => {
-  it('chains setSuccess', () => {
+describe("HandleLoadingBuilder", () => {
+  it("chains setSuccess", () => {
     const builder = createHandleLoading()
     const result = builder.setSuccess(() => {})
     expect(result).toBe(builder)
   })
 
-  it('chains setError', () => {
+  it("chains setError", () => {
     const builder = createHandleLoading()
     const result = builder.setError(() => {})
     expect(result).toBe(builder)
   })
 
-  it('chains setFinally', () => {
+  it("chains setFinally", () => {
     const builder = createHandleLoading()
     const result = builder.setFinally(() => {})
     expect(result).toBe(builder)
   })
 
-  it('chains setLoading', () => {
+  it("chains setLoading", () => {
     const builder = createHandleLoading()
     const result = builder.setLoading(() => {})
     expect(result).toBe(builder)
   })
 
-  it('chains setValidateSuccess', () => {
+  it("chains setValidateSuccess", () => {
     const builder = createHandleLoading()
     const result = builder.setValidateSuccess(() => true)
     expect(result).toBe(builder)
   })
 
-  it('chains setValidateError', () => {
+  it("chains setValidateError", () => {
     const builder = createHandleLoading()
     const result = builder.setValidateError(() => true)
     expect(result).toBe(builder)
   })
 
-  it('chains setValidateFinally', () => {
+  it("chains setValidateFinally", () => {
     const builder = createHandleLoading()
     const result = builder.setValidateFinally(() => true)
     expect(result).toBe(builder)
   })
 
-  it('builds handler that calls default success', async () => {
+  it("builds handler that calls default success", async () => {
     const onSuccess = vi.fn()
-    const handler = createHandleLoading()
-      .setSuccess(onSuccess)
-      .build()
-    const callback = vi.fn().mockResolvedValue('result')
+    const handler = createHandleLoading().setSuccess(onSuccess).build()
+    const callback = vi.fn().mockResolvedValue("result")
     await handler(callback)
-    expect(onSuccess).toHaveBeenCalledWith('result')
+    expect(onSuccess).toHaveBeenCalledWith("result")
   })
 
-  it('builds handler that calls default error', async () => {
+  it("builds handler that calls default error", async () => {
     const onError = vi.fn()
-    const handler = createHandleLoading()
-      .setError(onError)
-      .build()
-    const callback = vi.fn().mockRejectedValue(new Error('fail'))
+    const handler = createHandleLoading().setError(onError).build()
+    const callback = vi.fn().mockRejectedValue(new Error("fail"))
     await handler(callback)
     expect(onError).toHaveBeenCalled()
   })
 
-  it('builds handler that merges overrides', async () => {
+  it("builds handler that merges overrides", async () => {
     const defaultSuccess = vi.fn()
     const overrideSuccess = vi.fn()
-    const handler = createHandleLoading()
-      .setSuccess(defaultSuccess)
-      .build()
-    const callback = vi.fn().mockResolvedValue('result')
+    const handler = createHandleLoading().setSuccess(defaultSuccess).build()
+    const callback = vi.fn().mockResolvedValue("result")
     await handler(callback, { onSuccess: [overrideSuccess] })
-    expect(defaultSuccess).toHaveBeenCalledWith('result')
-    expect(overrideSuccess).toHaveBeenCalledWith('result')
+    expect(defaultSuccess).toHaveBeenCalledWith("result")
+    expect(overrideSuccess).toHaveBeenCalledWith("result")
   })
 
-  it('override setLoading takes precedence', async () => {
+  it("override setLoading takes precedence", async () => {
     const defaultSetLoading = vi.fn()
     const overrideSetLoading = vi.fn()
-    const handler = createHandleLoading()
-      .setLoading(defaultSetLoading)
-      .build()
-    const callback = vi.fn().mockResolvedValue('result')
+    const handler = createHandleLoading().setLoading(defaultSetLoading).build()
+    const callback = vi.fn().mockResolvedValue("result")
     await handler(callback, { setLoading: overrideSetLoading })
     expect(defaultSetLoading).not.toHaveBeenCalled()
     expect(overrideSetLoading).toHaveBeenCalled()
   })
 
-  it('override validateSuccess takes precedence', async () => {
+  it("override validateSuccess takes precedence", async () => {
     const onSuccess = vi.fn()
     const handler = createHandleLoading()
       .setSuccess(onSuccess)
       .setValidateSuccess(() => true)
       .build()
-    const callback = vi.fn().mockResolvedValue('result')
+    const callback = vi.fn().mockResolvedValue("result")
     await handler(callback, { validateSuccess: () => false })
     expect(onSuccess).not.toHaveBeenCalled()
   })
