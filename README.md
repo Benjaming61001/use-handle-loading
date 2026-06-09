@@ -8,6 +8,18 @@ A lightweight TypeScript utility for managing async loading states with success/
 npm install @benjaming61001/use-handle-loading
 ```
 
+```bash
+bun add @benjaming61001/use-handle-loading
+```
+
+```bash
+yarn add @benjaming61001/use-handle-loading
+```
+
+```bash
+pnpm add @benjaming61001/use-handle-loading
+```
+
 ## Usage
 
 ### Direct Usage
@@ -95,6 +107,15 @@ Returns a `HandleLoadingBuilder` for chaining configuration.
 | `.setValidateError(fn)` | Add validation before error callbacks |
 | `.setValidateFinally(fn)` | Add validation before finally callbacks |
 | `.build()` | Create the configured handler function |
+
+## Development
+
+```bash
+bun install
+bun run test        # run tests
+bun run test:watch  # watch mode
+bun run build       # build package
+```
 
 ## License
 
