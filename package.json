@@ -1,6 +1,6 @@
 {
   "name": "@benjaming61001/use-handle-loading",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A lightweight TypeScript utility for managing async loading states with success/error/finally hooks.",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
