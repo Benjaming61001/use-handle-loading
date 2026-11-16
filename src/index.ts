@@ -1,30 +1,9 @@
-/** A hook may be sync or async; a returned promise is awaited before the next hook runs. */
-export type Hook<TArgs extends unknown[]> = (...args: TArgs) => unknown
+import { runHooks } from './hooks'
+import type { HandleLoadingFn, HandleLoadingOptions, Hook, IHandleLoadingBuilder } from './types'
 
-export interface HandleLoadingOptions<T> {
-  onSuccess?: Hook<[result: T]>[]
-  onError?: Hook<[error: unknown]>[]
-  onFinally?: Hook<[]>[]
-  setLoading?: (loading: boolean) => void
-  validateSuccess?: (result: T) => boolean
-  validateError?: (error: unknown) => boolean
-  validateFinally?: () => boolean
-}
+export type { HandleLoadingFn, HandleLoadingOptions, Hook, IHandleLoadingBuilder } from './types'
 
-async function runHooks<TArgs extends unknown[]>(
-  hooks: Hook<TArgs>[] | undefined,
-  ...args: TArgs
-): Promise<void> {
-  for (const hook of hooks ?? []) {
-    await hook(...args)
-  }
-}
-
-export async function handleLoading<T, TArgs extends unknown[]>(
-  callback: (...args: TArgs) => T | Promise<T>,
-  options: HandleLoadingOptions<T> = {},
-  ...args: TArgs
-): Promise<T | undefined> {
+export const handleLoading: HandleLoadingFn = async (callback, options = {}, ...args) => {
   const {
     onSuccess,
     onError,
@@ -56,7 +35,7 @@ export async function handleLoading<T, TArgs extends unknown[]>(
   }
 }
 
-export class HandleLoadingBuilder {
+export class HandleLoadingBuilder implements IHandleLoadingBuilder {
   private options: HandleLoadingOptions<unknown> = {
     onSuccess: [],
     onError: [],
@@ -98,7 +77,7 @@ export class HandleLoadingBuilder {
     return this
   }
 
-  build() {
+  build(): HandleLoadingFn {
     // Snapshot the hook arrays so hooks added to the builder after build() don't leak into this handler
     const defaults: HandleLoadingOptions<unknown> = {
       ...this.options,
@@ -106,35 +85,22 @@ export class HandleLoadingBuilder {
       onError: [...(this.options.onError ?? [])],
       onFinally: [...(this.options.onFinally ?? [])]
     }
-    return <T, TArgs extends unknown[]>(
-      callback: (...args: TArgs) => T | Promise<T>,
-      overrides: {
-        onSuccess?: Hook<[result: T]>[]
-        onError?: Hook<[error: unknown]>[]
-        onFinally?: Hook<[]>[]
-        setLoading?: (loading: boolean) => void
-        validateSuccess?: (result: T) => boolean
-        validateError?: (error: unknown) => boolean
-        validateFinally?: () => boolean
-      } = {},
-      ...args: TArgs
-    ) => {
-      const merged: HandleLoadingOptions<T> = {
-        setLoading: overrides.setLoading ?? (defaults.setLoading as (loading: boolean) => void),
-        validateSuccess:
-          overrides.validateSuccess ?? (defaults.validateSuccess as (result: T) => boolean),
-        validateError:
-          overrides.validateError ?? (defaults.validateError as (error: unknown) => boolean),
-        validateFinally: overrides.validateFinally ?? (defaults.validateFinally as () => boolean),
-        onSuccess: [...(defaults.onSuccess as Hook<[result: T]>[]), ...(overrides.onSuccess ?? [])],
-        onError: [...(defaults.onError as Hook<[error: unknown]>[]), ...(overrides.onError ?? [])],
-        onFinally: [...(defaults.onFinally as Hook<[]>[]), ...(overrides.onFinally ?? [])]
+    return (callback, overrides = {}, ...args) => {
+      // Hooks/validators typed for `unknown` are assignable to ones for `T`, so no casts are needed
+      const merged: typeof overrides = {
+        setLoading: overrides.setLoading ?? defaults.setLoading,
+        validateSuccess: overrides.validateSuccess ?? defaults.validateSuccess,
+        validateError: overrides.validateError ?? defaults.validateError,
+        validateFinally: overrides.validateFinally ?? defaults.validateFinally,
+        onSuccess: [...(defaults.onSuccess ?? []), ...(overrides.onSuccess ?? [])],
+        onError: [...(defaults.onError ?? []), ...(overrides.onError ?? [])],
+        onFinally: [...(defaults.onFinally ?? []), ...(overrides.onFinally ?? [])]
       }
       return handleLoading(callback, merged, ...args)
     }
   }
 }
 
-export function createHandleLoading(): HandleLoadingBuilder {
+export function createHandleLoading(): IHandleLoadingBuilder {
   return new HandleLoadingBuilder()
 }
