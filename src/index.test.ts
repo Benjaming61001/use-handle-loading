@@ -1,5 +1,13 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { handleLoading, createHandleLoading, HandleLoadingBuilder } from './index'
+
+// Errors with no onError hooks are logged; keep test output quiet (tests that check it spy on it themselves)
+beforeEach(() => {
+  vi.spyOn(console, 'error').mockImplementation(() => {})
+})
+afterEach(() => {
+  vi.restoreAllMocks()
+})
 
 describe('handleLoading', () => {
   it('returns result on success', async () => {
@@ -70,7 +78,7 @@ describe('handleLoading', () => {
     expect(count).toBe(0)
   })
 
-  it('a throwing setLoading(true) rejects the call but does not leave the counter stuck', async () => {
+  it('a throwing setLoading(true) is reported, the callback still runs, and the counter is not stuck', async () => {
     const states: boolean[] = []
     let failNextStart = true
     const setLoading = (loading: boolean): void => {
@@ -80,8 +88,11 @@ describe('handleLoading', () => {
         throw new Error('start failed')
       }
     }
-    await expect(handleLoading(async () => 1, { setLoading })).rejects.toThrow('start failed')
+    const onHookError = vi.fn()
+    await expect(handleLoading(async () => 1, { setLoading, onHookError })).resolves.toBe(1)
+    expect(onHookError).toHaveBeenCalledWith(new Error('start failed'), 'setLoading')
     await handleLoading(async () => 2, { setLoading })
+    // first call: only the failed `true` (no `false` for a start that didn't happen); second call: true, false
     expect(states).toEqual([true, true, false])
   })
 
@@ -316,18 +327,21 @@ describe('async hooks', () => {
     expect(log).toEqual(['error1 start', 'error1 end', 'error2 start', 'error2 end', 'resolved'])
   })
 
-  it('a rejecting async onSuccess is handled like a throwing sync one (goes to onError)', async () => {
+  it('a rejecting async onSuccess is reported; the result is kept and onError does not run', async () => {
     const onError = vi.fn()
+    const onHookError = vi.fn()
     const result = await handleLoading(async () => 'ok', {
       onSuccess: [
         async () => {
           throw new Error('hook failed')
         }
       ],
-      onError: [onError]
+      onError: [onError],
+      onHookError
     })
-    expect(onError).toHaveBeenCalledWith(new Error('hook failed'))
-    expect(result).toBeUndefined()
+    expect(result).toBe('ok')
+    expect(onError).not.toHaveBeenCalled()
+    expect(onHookError).toHaveBeenCalledWith(new Error('hook failed'), 'onSuccess')
   })
 
   it('builder awaits default hooks, then override hooks, in order', async () => {
@@ -342,5 +356,214 @@ describe('async hooks', () => {
       'override end',
       'resolved'
     ])
+  })
+})
+
+describe('throwing validators (onHookError)', () => {
+  const boom = new Error('validator failed')
+  const throws = (): never => {
+    throw boom
+  }
+
+  it('validateSuccess: keeps the result, skips onSuccess, does not call onError', async () => {
+    const onSuccess = vi.fn()
+    const onError = vi.fn()
+    const onHookError = vi.fn()
+    const result = await handleLoading(async () => 'ok', {
+      validateSuccess: throws,
+      onSuccess: [onSuccess],
+      onError: [onError],
+      onHookError
+    })
+    expect(result).toBe('ok')
+    expect(onSuccess).not.toHaveBeenCalled()
+    expect(onError).not.toHaveBeenCalled()
+    expect(onHookError).toHaveBeenCalledWith(boom, 'validateSuccess')
+  })
+
+  it('validateError: resolves undefined instead of rejecting, skips onError', async () => {
+    const onError = vi.fn()
+    const onHookError = vi.fn()
+    const call = handleLoading(
+      async () => {
+        throw new Error('request failed')
+      },
+      { validateError: throws, onError: [onError], onHookError }
+    )
+    await expect(call).resolves.toBeUndefined()
+    expect(onError).not.toHaveBeenCalled()
+    expect(onHookError).toHaveBeenCalledWith(boom, 'validateError')
+  })
+
+  it('validateFinally: keeps the successful result, skips onFinally', async () => {
+    const onFinally = vi.fn()
+    const onHookError = vi.fn()
+    const result = await handleLoading(async () => 'ok', {
+      validateFinally: throws,
+      onFinally: [onFinally],
+      onHookError
+    })
+    expect(result).toBe('ok')
+    expect(onFinally).not.toHaveBeenCalled()
+    expect(onHookError).toHaveBeenCalledWith(boom, 'validateFinally')
+  })
+
+  it('falls back to console.error when onHookError is not set', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const result = await handleLoading(async () => 'ok', { validateSuccess: throws })
+    expect(result).toBe('ok')
+    expect(consoleError).toHaveBeenCalledWith('[use-handle-loading] validateSuccess threw:', boom)
+    consoleError.mockRestore()
+  })
+
+  it('a throwing onHookError is reported to console.error and does not escape', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const handlerError = new Error('handler failed')
+    const result = await handleLoading(async () => 'ok', {
+      validateSuccess: throws,
+      onHookError: () => {
+        throw handlerError
+      }
+    })
+    expect(result).toBe('ok')
+    expect(consoleError).toHaveBeenCalledWith(
+      '[use-handle-loading] validateSuccess threw:',
+      handlerError
+    )
+    consoleError.mockRestore()
+  })
+
+  it('builder setHookError is used, and a per-call onHookError overrides it', async () => {
+    const fromBuilder = vi.fn()
+    const perCall = vi.fn()
+    const handler = createHandleLoading()
+      .setHookError(fromBuilder)
+      .setValidateSuccess(throws)
+      .build()
+    await handler(async () => 'ok')
+    expect(fromBuilder).toHaveBeenCalledWith(boom, 'validateSuccess')
+    await handler(async () => 'ok', { onHookError: perCall })
+    expect(perCall).toHaveBeenCalledWith(boom, 'validateSuccess')
+    expect(fromBuilder).toHaveBeenCalledTimes(1)
+  })
+
+  it('chains setHookError', () => {
+    const builder = createHandleLoading()
+    expect(builder.setHookError(() => {})).toBe(builder)
+  })
+})
+
+describe('unhandled callback errors (bug 2)', () => {
+  it('logs the error to console.error when there are no onError hooks', async () => {
+    const error = new Error('request failed')
+    const result = await handleLoading(async () => {
+      throw error
+    })
+    expect(result).toBeUndefined()
+    expect(console.error).toHaveBeenCalledWith(
+      '[use-handle-loading] unhandled error (no onError hooks):',
+      error
+    )
+  })
+
+  it('does not log when onError hooks handle it', async () => {
+    await handleLoading(
+      async () => {
+        throw new Error('x')
+      },
+      { onError: [() => {}] }
+    )
+    expect(console.error).not.toHaveBeenCalled()
+  })
+
+  it('does not log when onError hooks exist but validateError filters the error out', async () => {
+    const onError = vi.fn()
+    await handleLoading(
+      async () => {
+        throw new Error('401')
+      },
+      { onError: [onError], validateError: () => false }
+    )
+    expect(onError).not.toHaveBeenCalled()
+    expect(console.error).not.toHaveBeenCalled()
+  })
+})
+
+describe('failing hooks do not change the result (bugs 3 and 4)', () => {
+  const fail = (message: string) => (): never => {
+    throw new Error(message)
+  }
+
+  it('a throwing onSuccess keeps the result, skips onError, and later onSuccess hooks still run', async () => {
+    const later = vi.fn()
+    const onError = vi.fn()
+    const onHookError = vi.fn()
+    const result = await handleLoading(async () => 'ok', {
+      onSuccess: [fail('s'), later],
+      onError: [onError],
+      onHookError
+    })
+    expect(result).toBe('ok')
+    expect(later).toHaveBeenCalledWith('ok')
+    expect(onError).not.toHaveBeenCalled()
+    expect(onHookError).toHaveBeenCalledWith(new Error('s'), 'onSuccess')
+  })
+
+  it('a throwing onError hook does not reject; later onError hooks still run', async () => {
+    const later = vi.fn()
+    const onHookError = vi.fn()
+    const call = handleLoading(
+      async () => {
+        throw new Error('request')
+      },
+      { onError: [fail('e'), later], onHookError }
+    )
+    await expect(call).resolves.toBeUndefined()
+    expect(later).toHaveBeenCalledWith(new Error('request'))
+    expect(onHookError).toHaveBeenCalledWith(new Error('e'), 'onError')
+  })
+
+  it('a throwing onFinally keeps the result; later onFinally hooks still run', async () => {
+    const later = vi.fn()
+    const onHookError = vi.fn()
+    const result = await handleLoading(async () => 'ok', {
+      onFinally: [fail('f'), later],
+      onHookError
+    })
+    expect(result).toBe('ok')
+    expect(later).toHaveBeenCalled()
+    expect(onHookError).toHaveBeenCalledWith(new Error('f'), 'onFinally')
+  })
+
+  it('a throwing setLoading(false) keeps the result and onFinally still runs', async () => {
+    const onFinally = vi.fn()
+    const onHookError = vi.fn()
+    const setLoading = (loading: boolean): void => {
+      if (!loading) throw new Error('stop failed')
+    }
+    const result = await handleLoading(async () => 'ok', {
+      setLoading,
+      onFinally: [onFinally],
+      onHookError
+    })
+    expect(result).toBe('ok')
+    expect(onFinally).toHaveBeenCalled()
+    expect(onHookError).toHaveBeenCalledWith(new Error('stop failed'), 'setLoading')
+  })
+
+  it('keeps the order: callback → onSuccess → setLoading(false) → onFinally', async () => {
+    const log: string[] = []
+    await handleLoading(
+      async () => {
+        log.push('callback')
+        return 'ok'
+      },
+      {
+        setLoading: (loading) => log.push(`loading ${loading}`),
+        onSuccess: [() => log.push('success')],
+        onFinally: [() => log.push('finally')]
+      }
+    )
+    expect(log).toEqual(['loading true', 'callback', 'success', 'loading false', 'finally'])
   })
 })

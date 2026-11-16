@@ -1,3 +1,6 @@
+import { reportHookError } from './hooks'
+import type { HookErrorHandler } from './types'
+
 // Running-call count per setLoading function, so overlapping calls that share one setLoading
 // (e.g. through a built handler) report loading `true` on the first start and `false` only after
 // the last call finishes. WeakMap: entries go away with the function.
@@ -27,4 +30,30 @@ export function stopLoading(setLoading?: (loading: boolean) => void): void {
   }
   pending.delete(setLoading)
   setLoading(false)
+}
+
+/** Start loading; if setLoading(true) throws, report it and return false (the call goes ahead without a spinner). */
+export function safeStartLoading(
+  setLoading: ((loading: boolean) => void) | undefined,
+  handler?: HookErrorHandler
+): boolean {
+  try {
+    startLoading(setLoading)
+    return true
+  } catch (error) {
+    reportHookError(handler, error, 'setLoading')
+    return false
+  }
+}
+
+/** Stop loading; if setLoading(false) throws, report it instead of rejecting the call. */
+export function safeStopLoading(
+  setLoading: ((loading: boolean) => void) | undefined,
+  handler?: HookErrorHandler
+): void {
+  try {
+    stopLoading(setLoading)
+  } catch (error) {
+    reportHookError(handler, error, 'setLoading')
+  }
 }

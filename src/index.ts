@@ -1,8 +1,21 @@
-import { runHooks } from './hooks'
-import { startLoading, stopLoading } from './loading'
-import type { HandleLoadingFn, HandleLoadingOptions, Hook, IHandleLoadingBuilder } from './types'
+import { runHooks, safeValidate, settle } from './hooks'
+import { safeStartLoading, safeStopLoading } from './loading'
+import type {
+  HandleLoadingFn,
+  HandleLoadingOptions,
+  Hook,
+  HookErrorHandler,
+  IHandleLoadingBuilder
+} from './types'
 
-export type { HandleLoadingFn, HandleLoadingOptions, Hook, IHandleLoadingBuilder } from './types'
+export type {
+  HandleLoadingFn,
+  HandleLoadingOptions,
+  Hook,
+  HookErrorHandler,
+  HookErrorSource,
+  IHandleLoadingBuilder
+} from './types'
 
 export const handleLoading: HandleLoadingFn = async (callback, options = {}, ...args) => {
   const {
@@ -12,28 +25,31 @@ export const handleLoading: HandleLoadingFn = async (callback, options = {}, ...
     setLoading,
     validateSuccess = () => true,
     validateError = () => true,
-    validateFinally = () => true
+    validateFinally = () => true,
+    onHookError
   } = options
 
-  startLoading(setLoading)
+  // Nothing below throws: hooks, validators and setLoading report errors to onHookError instead,
+  // so only the callback's own outcome decides the result.
+  const started = safeStartLoading(setLoading, onHookError)
+  const outcome = await settle(() => callback(...args))
 
-  try {
-    const result = await callback(...args)
-    if (validateSuccess(result)) {
-      await runHooks(onSuccess, result)
+  if (outcome.ok) {
+    if (safeValidate(validateSuccess, 'validateSuccess', onHookError, outcome.value)) {
+      await runHooks(onSuccess, 'onSuccess', onHookError, outcome.value)
     }
-    return result
-  } catch (error) {
-    if (validateError(error)) {
-      await runHooks(onError, error)
-    }
-    return undefined
-  } finally {
-    stopLoading(setLoading)
-    if (validateFinally()) {
-      await runHooks(onFinally)
-    }
+  } else if (!onError?.length) {
+    console.error('[use-handle-loading] unhandled error (no onError hooks):', outcome.error)
+  } else if (safeValidate(validateError, 'validateError', onHookError, outcome.error)) {
+    await runHooks(onError, 'onError', onHookError, outcome.error)
   }
+
+  if (started) safeStopLoading(setLoading, onHookError)
+  if (safeValidate(validateFinally, 'validateFinally', onHookError)) {
+    await runHooks(onFinally, 'onFinally', onHookError)
+  }
+
+  return outcome.ok ? outcome.value : undefined
 }
 
 export class HandleLoadingBuilder implements IHandleLoadingBuilder {
@@ -78,6 +94,11 @@ export class HandleLoadingBuilder implements IHandleLoadingBuilder {
     return this
   }
 
+  setHookError(fn: HookErrorHandler): this {
+    this.options.onHookError = fn
+    return this
+  }
+
   build(): HandleLoadingFn {
     // Snapshot the hook arrays so hooks added to the builder after build() don't leak into this handler
     const defaults: HandleLoadingOptions<unknown> = {
@@ -93,6 +114,7 @@ export class HandleLoadingBuilder implements IHandleLoadingBuilder {
         validateSuccess: overrides.validateSuccess ?? defaults.validateSuccess,
         validateError: overrides.validateError ?? defaults.validateError,
         validateFinally: overrides.validateFinally ?? defaults.validateFinally,
+        onHookError: overrides.onHookError ?? defaults.onHookError,
         onSuccess: [...(defaults.onSuccess ?? []), ...(overrides.onSuccess ?? [])],
         onError: [...(defaults.onError ?? []), ...(overrides.onError ?? [])],
         onFinally: [...(defaults.onFinally ?? []), ...(overrides.onFinally ?? [])]
