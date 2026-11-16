@@ -42,6 +42,7 @@
     "url": "https://github.com/Benjaming61001/use-handle-loading/issues"
   },
   "homepage": "https://github.com/Benjaming61001/use-handle-loading#readme",
+  "packageManager": "bun@1.4.4",
   "devDependencies": {
     "oxfmt": "^0.78.0",
     "oxlint": "^1.93.0",
