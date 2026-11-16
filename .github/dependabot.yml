@@ -1,0 +1,11 @@
+# Dependabot reads bun.lock (the npm ecosystem needs package-lock.json, which this repo no longer has).
+version: 2
+updates:
+  - package-ecosystem: 'bun'
+    directory: '/'
+    schedule:
+      interval: 'weekly'
+    open-pull-requests-limit: 5
+    groups:
+      dev-dependencies:
+        dependency-type: 'development'
