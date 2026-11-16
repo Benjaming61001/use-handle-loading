@@ -22,7 +22,7 @@
     "test:watch": "vitest",
     "lint": "oxlint src/",
     "lint:fix": "oxlint src/ --fix",
-    "format": "oxfmt src/",
+    "format": "oxfmt --check src/",
     "format:fix": "oxfmt src/ --write"
   },
   "repository": {
