@@ -1,4 +1,5 @@
 import { runHooks } from './hooks'
+import { startLoading, stopLoading } from './loading'
 import type { HandleLoadingFn, HandleLoadingOptions, Hook, IHandleLoadingBuilder } from './types'
 
 export type { HandleLoadingFn, HandleLoadingOptions, Hook, IHandleLoadingBuilder } from './types'
@@ -14,7 +15,7 @@ export const handleLoading: HandleLoadingFn = async (callback, options = {}, ...
     validateFinally = () => true
   } = options
 
-  setLoading?.(true)
+  startLoading(setLoading)
 
   try {
     const result = await callback(...args)
@@ -28,7 +29,7 @@ export const handleLoading: HandleLoadingFn = async (callback, options = {}, ...
     }
     return undefined
   } finally {
-    setLoading?.(false)
+    stopLoading(setLoading)
     if (validateFinally()) {
       await runHooks(onFinally)
     }

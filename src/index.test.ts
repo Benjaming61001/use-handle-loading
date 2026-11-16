@@ -37,6 +37,65 @@ describe('handleLoading', () => {
     expect(setLoading).toHaveBeenCalledWith(false)
   })
 
+  it('overlapping calls keep loading on until the last one finishes', async () => {
+    const states: boolean[] = []
+    const setLoading = (loading: boolean): void => {
+      states.push(loading)
+    }
+    let release!: () => void
+    const slow = handleLoading(
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve
+        }),
+      { setLoading }
+    )
+    await handleLoading(async () => 'fast', { setLoading })
+    expect(states).toEqual([true])
+    release()
+    await slow
+    expect(states).toEqual([true, false])
+  })
+
+  it('reports one start and one stop across overlapping calls (counting store stays balanced)', async () => {
+    let count = 0
+    const setLoading = (loading: boolean): void => {
+      count += loading ? 1 : -1
+    }
+    const calls = [1, 2, 3].map((ms) =>
+      handleLoading(() => new Promise((resolve) => setTimeout(resolve, ms)), { setLoading })
+    )
+    expect(count).toBe(1)
+    await Promise.all(calls)
+    expect(count).toBe(0)
+  })
+
+  it('a throwing setLoading(true) rejects the call but does not leave the counter stuck', async () => {
+    const states: boolean[] = []
+    let failNextStart = true
+    const setLoading = (loading: boolean): void => {
+      states.push(loading)
+      if (loading && failNextStart) {
+        failNextStart = false
+        throw new Error('start failed')
+      }
+    }
+    await expect(handleLoading(async () => 1, { setLoading })).rejects.toThrow('start failed')
+    await handleLoading(async () => 2, { setLoading })
+    expect(states).toEqual([true, true, false])
+  })
+
+  it('separate setLoading functions are tracked independently', async () => {
+    const a: boolean[] = []
+    const b: boolean[] = []
+    await Promise.all([
+      handleLoading(async () => 1, { setLoading: (v) => a.push(v) }),
+      handleLoading(async () => 2, { setLoading: (v) => b.push(v) })
+    ])
+    expect(a).toEqual([true, false])
+    expect(b).toEqual([true, false])
+  })
+
   it('calls onSuccess callbacks', async () => {
     const onSuccess = vi.fn()
     const callback = vi.fn().mockResolvedValue('result')
