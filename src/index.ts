@@ -87,7 +87,13 @@ export class HandleLoadingBuilder {
   }
 
   build() {
-    const defaults = { ...this.options }
+    // Snapshot the hook arrays so hooks added to the builder after build() don't leak into this handler
+    const defaults: HandleLoadingOptions<unknown> = {
+      ...this.options,
+      onSuccess: [...(this.options.onSuccess ?? [])],
+      onError: [...(this.options.onError ?? [])],
+      onFinally: [...(this.options.onFinally ?? [])]
+    }
     return <T, TArgs extends unknown[]>(
       callback: (...args: TArgs) => T | Promise<T>,
       overrides: {

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { handleLoading, createHandleLoading, HandleLoadingBuilder } from './index'
 
 describe('handleLoading', () => {
@@ -190,6 +190,18 @@ describe('HandleLoadingBuilder', () => {
     await handler(callback, { setLoading: overrideSetLoading })
     expect(defaultSetLoading).not.toHaveBeenCalled()
     expect(overrideSetLoading).toHaveBeenCalled()
+  })
+
+  it('build() snapshots hooks; later builder calls do not affect it', async () => {
+    const builder = createHandleLoading()
+    const first = vi.fn()
+    const handler = builder.setSuccess(first).build()
+    const late = vi.fn()
+    builder.setSuccess(late)
+
+    await handler(async () => 'ok')
+    expect(first).toHaveBeenCalled()
+    expect(late).not.toHaveBeenCalled()
   })
 
   it('override validateSuccess takes precedence', async () => {
