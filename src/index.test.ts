@@ -215,3 +215,73 @@ describe('HandleLoadingBuilder', () => {
     expect(onSuccess).not.toHaveBeenCalled()
   })
 })
+
+describe('async hooks', () => {
+  const tick = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
+  const slow = (log: string[], name: string) => async (): Promise<void> => {
+    log.push(`${name} start`)
+    await tick(10)
+    log.push(`${name} end`)
+  }
+
+  it('awaits each hook in order before resolving', async () => {
+    const log: string[] = []
+    await handleLoading(async () => 'ok', {
+      setLoading: (loading) => log.push(`loading ${loading}`),
+      onSuccess: [slow(log, 'success1'), slow(log, 'success2')],
+      onFinally: [slow(log, 'finally')]
+    })
+    log.push('resolved')
+    expect(log).toEqual([
+      'loading true',
+      'success1 start',
+      'success1 end',
+      'success2 start',
+      'success2 end',
+      'loading false',
+      'finally start',
+      'finally end',
+      'resolved'
+    ])
+  })
+
+  it('awaits async onError hooks in order', async () => {
+    const log: string[] = []
+    await handleLoading(
+      async () => {
+        throw new Error('fail')
+      },
+      { onError: [slow(log, 'error1'), slow(log, 'error2')] }
+    )
+    log.push('resolved')
+    expect(log).toEqual(['error1 start', 'error1 end', 'error2 start', 'error2 end', 'resolved'])
+  })
+
+  it('a rejecting async onSuccess is handled like a throwing sync one (goes to onError)', async () => {
+    const onError = vi.fn()
+    const result = await handleLoading(async () => 'ok', {
+      onSuccess: [
+        async () => {
+          throw new Error('hook failed')
+        }
+      ],
+      onError: [onError]
+    })
+    expect(onError).toHaveBeenCalledWith(new Error('hook failed'))
+    expect(result).toBeUndefined()
+  })
+
+  it('builder awaits default hooks, then override hooks, in order', async () => {
+    const log: string[] = []
+    const handler = createHandleLoading().setSuccess(slow(log, 'default')).build()
+    await handler(async () => 'ok', { onSuccess: [slow(log, 'override')] })
+    log.push('resolved')
+    expect(log).toEqual([
+      'default start',
+      'default end',
+      'override start',
+      'override end',
+      'resolved'
+    ])
+  })
+})

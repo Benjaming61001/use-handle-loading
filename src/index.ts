@@ -1,11 +1,23 @@
+/** A hook may be sync or async; a returned promise is awaited before the next hook runs. */
+export type Hook<TArgs extends unknown[]> = (...args: TArgs) => unknown
+
 export interface HandleLoadingOptions<T> {
-  onSuccess?: ((result: T) => void)[]
-  onError?: ((error: unknown) => void)[]
-  onFinally?: (() => void)[]
+  onSuccess?: Hook<[result: T]>[]
+  onError?: Hook<[error: unknown]>[]
+  onFinally?: Hook<[]>[]
   setLoading?: (loading: boolean) => void
   validateSuccess?: (result: T) => boolean
   validateError?: (error: unknown) => boolean
   validateFinally?: () => boolean
+}
+
+async function runHooks<TArgs extends unknown[]>(
+  hooks: Hook<TArgs>[] | undefined,
+  ...args: TArgs
+): Promise<void> {
+  for (const hook of hooks ?? []) {
+    await hook(...args)
+  }
 }
 
 export async function handleLoading<T, TArgs extends unknown[]>(
@@ -28,18 +40,18 @@ export async function handleLoading<T, TArgs extends unknown[]>(
   try {
     const result = await callback(...args)
     if (validateSuccess(result)) {
-      onSuccess?.forEach((fn) => fn(result))
+      await runHooks(onSuccess, result)
     }
     return result
   } catch (error) {
     if (validateError(error)) {
-      onError?.forEach((fn) => fn(error))
+      await runHooks(onError, error)
     }
     return undefined
   } finally {
     setLoading?.(false)
     if (validateFinally()) {
-      onFinally?.forEach((fn) => fn())
+      await runHooks(onFinally)
     }
   }
 }
@@ -51,17 +63,17 @@ export class HandleLoadingBuilder {
     onFinally: []
   }
 
-  setSuccess(fn: (result: unknown) => void): this {
+  setSuccess(fn: Hook<[result: unknown]>): this {
     this.options.onSuccess!.push(fn)
     return this
   }
 
-  setError(fn: (error: unknown) => void): this {
+  setError(fn: Hook<[error: unknown]>): this {
     this.options.onError!.push(fn)
     return this
   }
 
-  setFinally(fn: () => void): this {
+  setFinally(fn: Hook<[]>): this {
     this.options.onFinally!.push(fn)
     return this
   }
@@ -97,9 +109,9 @@ export class HandleLoadingBuilder {
     return <T, TArgs extends unknown[]>(
       callback: (...args: TArgs) => T | Promise<T>,
       overrides: {
-        onSuccess?: ((result: T) => void)[]
-        onError?: ((error: unknown) => void)[]
-        onFinally?: (() => void)[]
+        onSuccess?: Hook<[result: T]>[]
+        onError?: Hook<[error: unknown]>[]
+        onFinally?: Hook<[]>[]
         setLoading?: (loading: boolean) => void
         validateSuccess?: (result: T) => boolean
         validateError?: (error: unknown) => boolean
@@ -114,15 +126,9 @@ export class HandleLoadingBuilder {
         validateError:
           overrides.validateError ?? (defaults.validateError as (error: unknown) => boolean),
         validateFinally: overrides.validateFinally ?? (defaults.validateFinally as () => boolean),
-        onSuccess: [
-          ...(defaults.onSuccess as ((result: T) => void)[]),
-          ...(overrides.onSuccess ?? [])
-        ],
-        onError: [
-          ...(defaults.onError as ((error: unknown) => void)[]),
-          ...(overrides.onError ?? [])
-        ],
-        onFinally: [...(defaults.onFinally as (() => void)[]), ...(overrides.onFinally ?? [])]
+        onSuccess: [...(defaults.onSuccess as Hook<[result: T]>[]), ...(overrides.onSuccess ?? [])],
+        onError: [...(defaults.onError as Hook<[error: unknown]>[]), ...(overrides.onError ?? [])],
+        onFinally: [...(defaults.onFinally as Hook<[]>[]), ...(overrides.onFinally ?? [])]
       }
       return handleLoading(callback, merged, ...args)
     }
