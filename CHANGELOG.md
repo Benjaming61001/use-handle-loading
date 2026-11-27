@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.2.1
+
+### Changed (breaking)
+
+- **Per-call hook lists replace the builder's.** A handler from `build()` used to run the builder's `onSuccess` /
+  `onError` / `onFinally` hooks and then the call's; now a call that passes one of these lists replaces the builder's
+  list (same rule as `setLoading`, the validators and `onHookError`). Lists the call leaves out still use the builder's.
+  To keep a builder hook, include it in the call's list. `[]` turns the builder's hooks off for that call.
+
+- **The builder is immutable.** Every method returns a new builder instead of changing the one it is called on, so a
+  base builder can be extended into several handlers in any order. Code that called a setter without using its return
+  value (`builder.setSuccess(fn)` on its own line) must reassign or chain instead. Builder methods return
+  `IHandleLoadingBuilder` (was `this`).
+
+### Added
+
+- Builder methods `replaceSuccess(...fns)`, `replaceError(...fns)`, `replaceFinally(...fns)`: replace the builder's hook
+  list instead of adding to it (`setSuccess` etc. still add). No arguments clears the list.
+- Optional `validateBefore` option and `setValidateBefore()` builder method: a sync or async check that runs after
+  `setLoading(true)` and before the callback (e.g. form validation). `false` or a throw skips the callback and its
+  `onSuccess`/`onError` hooks; loading still stops, `onFinally` still runs, and the call resolves `undefined`. A throw is
+  reported to `onHookError` with source `'validateBefore'`.
+
 ## 0.2.0
 
 ### Breaking changes

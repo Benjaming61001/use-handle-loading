@@ -184,46 +184,26 @@ describe('createHandleLoading', () => {
 })
 
 describe('HandleLoadingBuilder', () => {
-  it('chains setSuccess', () => {
-    const builder = createHandleLoading()
-    const result = builder.setSuccess(() => {})
-    expect(result).toBe(builder)
+  it('replaceSuccess/replaceError/replaceFinally replace the builder lists (no args: clear)', async () => {
+    const old = vi.fn()
+    const next = vi.fn()
+    const builder = createHandleLoading().setSuccess(old).setError(old).setFinally(old)
+    const run = builder.replaceSuccess(next).replaceError(next).replaceFinally().build()
+    await run(vi.fn().mockResolvedValue('ok'))
+    await run(vi.fn().mockRejectedValue('fail'))
+    expect(old).not.toHaveBeenCalled()
+    expect(next.mock.calls).toEqual([['ok'], ['fail']])
   })
 
-  it('chains setError', () => {
-    const builder = createHandleLoading()
-    const result = builder.setError(() => {})
-    expect(result).toBe(builder)
-  })
-
-  it('chains setFinally', () => {
-    const builder = createHandleLoading()
-    const result = builder.setFinally(() => {})
-    expect(result).toBe(builder)
-  })
-
-  it('chains setLoading', () => {
-    const builder = createHandleLoading()
-    const result = builder.setLoading(() => {})
-    expect(result).toBe(builder)
-  })
-
-  it('chains setValidateSuccess', () => {
-    const builder = createHandleLoading()
-    const result = builder.setValidateSuccess(() => true)
-    expect(result).toBe(builder)
-  })
-
-  it('chains setValidateError', () => {
-    const builder = createHandleLoading()
-    const result = builder.setValidateError(() => true)
-    expect(result).toBe(builder)
-  })
-
-  it('chains setValidateFinally', () => {
-    const builder = createHandleLoading()
-    const result = builder.setValidateFinally(() => true)
-    expect(result).toBe(builder)
+  it('setSuccess after replaceSuccess adds to the new list', async () => {
+    const calls: string[] = []
+    const run = createHandleLoading()
+      .setSuccess(() => calls.push('old'))
+      .replaceSuccess(() => calls.push('a'))
+      .setSuccess(() => calls.push('b'))
+      .build()
+    await run(async () => 'ok')
+    expect(calls).toEqual(['a', 'b'])
   })
 
   it('builds handler that calls default success', async () => {
@@ -242,14 +222,30 @@ describe('HandleLoadingBuilder', () => {
     expect(onError).toHaveBeenCalled()
   })
 
-  it('builds handler that merges overrides', async () => {
+  it('per-call hook lists replace the builder hooks', async () => {
     const defaultSuccess = vi.fn()
     const overrideSuccess = vi.fn()
-    const handler = createHandleLoading().setSuccess(defaultSuccess).build()
-    const callback = vi.fn().mockResolvedValue('result')
-    await handler(callback, { onSuccess: [overrideSuccess] })
-    expect(defaultSuccess).toHaveBeenCalledWith('result')
+    const defaultError = vi.fn()
+    const overrideError = vi.fn()
+    const handler = createHandleLoading().setSuccess(defaultSuccess).setError(defaultError).build()
+    await handler(vi.fn().mockResolvedValue('result'), { onSuccess: [overrideSuccess] })
+    expect(defaultSuccess).not.toHaveBeenCalled()
     expect(overrideSuccess).toHaveBeenCalledWith('result')
+    await handler(vi.fn().mockRejectedValue('fail'), { onError: [overrideError] })
+    expect(defaultError).not.toHaveBeenCalled()
+    expect(overrideError).toHaveBeenCalledWith('fail')
+  })
+
+  it('builder hooks still run for options the call leaves out', async () => {
+    const defaultSuccess = vi.fn()
+    const defaultFinally = vi.fn()
+    const handler = createHandleLoading()
+      .setSuccess(defaultSuccess)
+      .setFinally(defaultFinally)
+      .build()
+    await handler(vi.fn().mockResolvedValue('result'), { onFinally: [] })
+    expect(defaultSuccess).toHaveBeenCalledWith('result')
+    expect(defaultFinally).not.toHaveBeenCalled()
   })
 
   it('override setLoading takes precedence', async () => {
@@ -262,12 +258,12 @@ describe('HandleLoadingBuilder', () => {
     expect(overrideSetLoading).toHaveBeenCalled()
   })
 
-  it('build() snapshots hooks; later builder calls do not affect it', async () => {
-    const builder = createHandleLoading()
+  it('a built handler is unaffected by later builder calls', async () => {
     const first = vi.fn()
-    const handler = builder.setSuccess(first).build()
+    const builder = createHandleLoading().setSuccess(first)
+    const handler = builder.build()
     const late = vi.fn()
-    builder.setSuccess(late)
+    builder.setSuccess(late).build()
 
     await handler(async () => 'ok')
     expect(first).toHaveBeenCalled()
@@ -344,18 +340,15 @@ describe('async hooks', () => {
     expect(onHookError).toHaveBeenCalledWith(new Error('hook failed'), 'onSuccess')
   })
 
-  it('builder awaits default hooks, then override hooks, in order', async () => {
+  it('builder awaits its hooks in the order they were added', async () => {
     const log: string[] = []
-    const handler = createHandleLoading().setSuccess(slow(log, 'default')).build()
-    await handler(async () => 'ok', { onSuccess: [slow(log, 'override')] })
+    const handler = createHandleLoading()
+      .setSuccess(slow(log, 'first'))
+      .setSuccess(slow(log, 'second'))
+      .build()
+    await handler(async () => 'ok')
     log.push('resolved')
-    expect(log).toEqual([
-      'default start',
-      'default end',
-      'override start',
-      'override end',
-      'resolved'
-    ])
+    expect(log).toEqual(['first start', 'first end', 'second start', 'second end', 'resolved'])
   })
 })
 
@@ -447,9 +440,45 @@ describe('throwing validators (onHookError)', () => {
     expect(fromBuilder).toHaveBeenCalledTimes(1)
   })
 
-  it('chains setHookError', () => {
+  it('every method returns a new builder', () => {
     const builder = createHandleLoading()
-    expect(builder.setHookError(() => {})).toBe(builder)
+    const results = [
+      builder.setSuccess(() => {}),
+      builder.setError(() => {}),
+      builder.setFinally(() => {}),
+      builder.replaceSuccess(),
+      builder.replaceError(),
+      builder.replaceFinally(),
+      builder.setLoading(() => {}),
+      builder.setValidateBefore(() => true),
+      builder.setValidateSuccess(() => true),
+      builder.setValidateError(() => true),
+      builder.setValidateFinally(() => true),
+      builder.setHookError(() => {})
+    ]
+    for (const result of results) {
+      expect(result).toBeInstanceOf(HandleLoadingBuilder)
+      expect(result).not.toBe(builder)
+    }
+  })
+
+  it('extending a base builder leaves it unchanged, in any order', async () => {
+    const calls: string[] = []
+    const hook = (name: string) => (): void => void calls.push(name)
+    const base = createHandleLoading().setSuccess(hook('x1')).setFinally(hook('y1'))
+
+    const handleB = base.setSuccess(hook('x2')).replaceFinally(hook('y2')).build()
+    const handleA = base.build() // built after B: still the base
+    const handleC = base.setError(hook('z')).build()
+
+    await handleA(async () => 'ok')
+    expect(calls).toEqual(['x1', 'y1'])
+    calls.length = 0
+    await handleB(async () => 'ok')
+    expect(calls).toEqual(['x1', 'x2', 'y2'])
+    calls.length = 0
+    await handleC(async () => 'ok')
+    expect(calls).toEqual(['x1', 'y1'])
   })
 })
 
@@ -565,5 +594,74 @@ describe('failing hooks do not change the result (bugs 3 and 4)', () => {
       }
     )
     expect(log).toEqual(['loading true', 'callback', 'success', 'loading false', 'finally'])
+  })
+})
+
+describe('validateBefore', () => {
+  it('false: skips callback and success/error hooks, still stops loading and runs onFinally', async () => {
+    const log: string[] = []
+    const callback = vi.fn()
+    const result = await handleLoading(callback, {
+      setLoading: (loading) => log.push(`loading ${loading}`),
+      validateBefore: () => {
+        log.push('validate')
+        return false
+      },
+      onSuccess: [() => log.push('success')],
+      onError: [() => log.push('error')],
+      onFinally: [() => log.push('finally')]
+    })
+    expect(result).toBeUndefined()
+    expect(callback).not.toHaveBeenCalled()
+    expect(log).toEqual(['loading true', 'validate', 'loading false', 'finally'])
+    expect(console.error).not.toHaveBeenCalled()
+  })
+
+  it('async true: runs the callback normally', async () => {
+    const result = await handleLoading(
+      async (x: number) => x * 2,
+      { validateBefore: async () => true },
+      21
+    )
+    expect(result).toBe(42)
+  })
+
+  it.each([
+    [
+      'throws',
+      () => {
+        throw new Error('boom')
+      }
+    ],
+    ['rejects', () => Promise.reject(new Error('boom'))]
+  ])('%s: reported as validateBefore, counts as false', async (_, validateBefore) => {
+    const onHookError = vi.fn()
+    const onError = vi.fn()
+    const onFinally = vi.fn()
+    const callback = vi.fn()
+    const result = await handleLoading(callback, {
+      validateBefore,
+      onHookError,
+      onError: [onError],
+      onFinally: [onFinally]
+    })
+    expect(result).toBeUndefined()
+    expect(callback).not.toHaveBeenCalled()
+    expect(onError).not.toHaveBeenCalled()
+    expect(onFinally).toHaveBeenCalledTimes(1)
+    expect(onHookError).toHaveBeenCalledWith(
+      expect.objectContaining({ message: 'boom' }),
+      'validateBefore'
+    )
+  })
+
+  it('builder: setValidateBefore applies, per-call value overrides', async () => {
+    const callback = vi.fn().mockResolvedValue('ok')
+    const run = createHandleLoading()
+      .setValidateBefore(() => false)
+      .build()
+    expect(await run(callback)).toBeUndefined()
+    expect(callback).not.toHaveBeenCalled()
+    expect(await run(callback, { validateBefore: () => true })).toBe('ok')
   })
 })
