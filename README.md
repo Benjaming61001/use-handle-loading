@@ -60,11 +60,24 @@ const run = createHandleLoading()
 // pre-configured hooks only
 const users = await run(fetchUsers)
 
-// per-call hooks run after the builder's (they are appended)
+// a per-call hook list replaces the builder's (here: no 'Done' toast, navigate instead)
 await run(fetchUser, { onSuccess: [(user) => router.push(`/users/${user.id}`)] }, userId)
+
+// keep the builder's behavior too: list it yourself
+await run(fetchUser, { onSuccess: [() => toast.success('Done'), (user) => router.push(`/users/${user.id}`)] }, userId)
 ```
 
-`build()` takes a snapshot: hooks added to the builder afterwards don't affect handlers that were already built.
+The builder is **immutable**: every method returns a new builder and leaves the original unchanged. One base builder can be
+extended into several handlers, in any order:
+
+```typescript
+const base = createHandleLoading().setLoading(setLoading).setError(toastError)
+
+const save = base.setSuccess(() => toast.success('Saved')).build()
+const load = base.build() // no success toast: `save` didn't change `base`
+```
+
+Keep the return value: `builder.setSuccess(fn)` on its own line does nothing to `builder`.
 
 ### Validation
 
@@ -79,6 +92,14 @@ const run = createHandleLoading()
 
 // override validation per call (replaces the builder's validator)
 await run(fetchUsers, { validateSuccess: (users) => users.length > 0 })
+```
+
+`validateBefore` (optional) is a gate **before** the callback, e.g. form validation. It may be async and runs after
+`setLoading(true)`. Returning `false` (or throwing) skips the callback and its `onSuccess`/`onError` hooks; loading
+still stops, `onFinally` still runs, and the call resolves `undefined`:
+
+```typescript
+await run(saveUser, { validateBefore: () => form.value.validate() }, form.value.data)
 ```
 
 ### Loading state
@@ -115,8 +136,8 @@ const setLoading = (loading: boolean): void => (loading ? loadingStore.add() : l
   - a throwing validator counts as `false` (its hooks are skipped);
   - a throwing `setLoading` doesn't stop the callback or `onFinally`.
 
-  `source` is one of `'onSuccess' | 'onError' | 'onFinally' | 'setLoading' | 'validateSuccess' | 'validateError' |
-  'validateFinally'`. Without `onHookError` these errors go to `console.error`.
+  `source` is one of `'onSuccess' | 'onError' | 'onFinally' | 'setLoading' | 'validateBefore' | 'validateSuccess' |
+  'validateError' | 'validateFinally'`. Without `onHookError` these errors go to `console.error`.
 
 ```typescript
 const saved = await handleLoading(saveUser, {
@@ -138,7 +159,7 @@ Keep `onHookError` synchronous (its return value isn't awaited); if it throws, t
 ### `handleLoading(callback, options?, ...args)`
 
 Runs `callback(...args)` and returns `Promise<T | undefined>`: the callback's result, or `undefined` if it failed.
-Order: `setLoading(true)` → callback → `onSuccess` (or `onError`) → `setLoading(false)` → `onFinally`.
+Order: `setLoading(true)` → `validateBefore` → callback → `onSuccess` (or `onError`) → `setLoading(false)` → `onFinally`.
 
 | Option | Type | Description |
 | --- | --- | --- |
@@ -146,6 +167,7 @@ Order: `setLoading(true)` → callback → `onSuccess` (or `onError`) → `setLo
 | `onError` | `Hook<[error: unknown]>[]` | Run after the callback fails |
 | `onFinally` | `Hook<[]>[]` | Run last, either way |
 | `setLoading` | `(loading: boolean) => void` | Loading state (reference-counted per function) |
+| `validateBefore` | `() => boolean \| Promise<boolean>` | Optional. Return `false` to skip the callback and `onSuccess`/`onError` |
 | `validateSuccess` | `(result: T) => boolean` | Return `false` to skip `onSuccess` |
 | `validateError` | `(error: unknown) => boolean` | Return `false` to skip `onError` |
 | `validateFinally` | `() => boolean` | Return `false` to skip `onFinally` |
@@ -155,20 +177,24 @@ Order: `setLoading(true)` → callback → `onSuccess` (or `onError`) → `setLo
 
 ### `createHandleLoading()`
 
-Returns an `IHandleLoadingBuilder`. Hook setters **append**; the other setters **replace**. Per call, hooks are appended
-after the builder's and the other options override it.
+Returns an immutable `IHandleLoadingBuilder` (every method returns a new builder). Hook setters **add** to the builder's list; the other setters **replace**. Per call,
+every option you pass — hook lists included — **replaces** the builder's; options you leave out use the builder's.
 
 | Method | Description |
 | --- | --- |
 | `.setSuccess(fn)` | Add an `onSuccess` hook |
 | `.setError(fn)` | Add an `onError` hook |
 | `.setFinally(fn)` | Add an `onFinally` hook |
+| `.replaceSuccess(...fns)` | Replace the `onSuccess` hooks (no args: clear) |
+| `.replaceError(...fns)` | Replace the `onError` hooks (no args: clear) |
+| `.replaceFinally(...fns)` | Replace the `onFinally` hooks (no args: clear) |
 | `.setLoading(fn)` | Set the loading handler |
+| `.setValidateBefore(fn)` | Set the check that runs before the callback |
 | `.setValidateSuccess(fn)` | Set the `onSuccess` validator |
 | `.setValidateError(fn)` | Set the `onError` validator |
 | `.setValidateFinally(fn)` | Set the `onFinally` validator |
 | `.setHookError(fn)` | Set the handler for errors from hooks, validators or `setLoading` |
-| `.build()` | Create a handler (`HandleLoadingFn`) from a snapshot of the configuration |
+| `.build()` | Create a handler (`HandleLoadingFn`) from the configuration |
 
 ### Types
 

@@ -61,3 +61,14 @@ export function safeValidate<TArgs extends unknown[]>(
     return false
   }
 }
+
+/** Async `safeValidate`: awaits the validator; a throw or rejection is reported and counts as `false`. */
+export async function safeValidateAsync(
+  validate: () => boolean | Promise<boolean>,
+  source: HookErrorSource,
+  handler: HookErrorHandler | undefined
+): Promise<boolean> {
+  const result = await settle(validate)
+  if (!result.ok) reportHookError(handler, result.error, source)
+  return result.ok && result.value
+}

@@ -1,4 +1,5 @@
-import { runHooks, safeValidate, settle } from './hooks'
+import { runHooks, safeValidate, safeValidateAsync, settle } from './hooks'
+import type { Settled } from './hooks'
 import { safeStartLoading, safeStopLoading } from './loading'
 import type {
   HandleLoadingFn,
@@ -23,6 +24,7 @@ export const handleLoading: HandleLoadingFn = async (callback, options = {}, ...
     onError,
     onFinally,
     setLoading,
+    validateBefore,
     validateSuccess = () => true,
     validateError = () => true,
     validateFinally = () => true,
@@ -32,16 +34,23 @@ export const handleLoading: HandleLoadingFn = async (callback, options = {}, ...
   // Nothing below throws: hooks, validators and setLoading report errors to onHookError instead,
   // so only the callback's own outcome decides the result.
   const started = safeStartLoading(setLoading, onHookError)
-  const outcome = await settle(() => callback(...args))
+  const proceed =
+    !validateBefore || (await safeValidateAsync(validateBefore, 'validateBefore', onHookError))
 
-  if (outcome.ok) {
-    if (safeValidate(validateSuccess, 'validateSuccess', onHookError, outcome.value)) {
-      await runHooks(onSuccess, 'onSuccess', onHookError, outcome.value)
+  // undefined: validateBefore said no, so the callback never ran
+  let outcome: Settled<ReturnType<typeof callback>> | undefined
+  if (proceed) {
+    outcome = await settle(() => callback(...args))
+
+    if (outcome.ok) {
+      if (safeValidate(validateSuccess, 'validateSuccess', onHookError, outcome.value)) {
+        await runHooks(onSuccess, 'onSuccess', onHookError, outcome.value)
+      }
+    } else if (!onError?.length) {
+      console.error('[use-handle-loading] unhandled error (no onError hooks):', outcome.error)
+    } else if (safeValidate(validateError, 'validateError', onHookError, outcome.error)) {
+      await runHooks(onError, 'onError', onHookError, outcome.error)
     }
-  } else if (!onError?.length) {
-    console.error('[use-handle-loading] unhandled error (no onError hooks):', outcome.error)
-  } else if (safeValidate(validateError, 'validateError', onHookError, outcome.error)) {
-    await runHooks(onError, 'onError', onHookError, outcome.error)
   }
 
   if (started) safeStopLoading(setLoading, onHookError)
@@ -49,75 +58,84 @@ export const handleLoading: HandleLoadingFn = async (callback, options = {}, ...
     await runHooks(onFinally, 'onFinally', onHookError)
   }
 
-  return outcome.ok ? outcome.value : undefined
+  return outcome?.ok ? outcome.value : undefined
 }
 
+/**
+ * Immutable: every setter returns a new builder and leaves this one unchanged, so one base builder can be
+ * extended into several handlers in any order.
+ */
 export class HandleLoadingBuilder implements IHandleLoadingBuilder {
-  private options: HandleLoadingOptions<unknown> = {
-    onSuccess: [],
-    onError: [],
-    onFinally: []
+  constructor(private readonly options: Readonly<HandleLoadingOptions<unknown>> = {}) {}
+
+  private with(patch: HandleLoadingOptions<unknown>): IHandleLoadingBuilder {
+    return new HandleLoadingBuilder({ ...this.options, ...patch })
   }
 
-  setSuccess(fn: Hook<[result: unknown]>): this {
-    this.options.onSuccess!.push(fn)
-    return this
+  setSuccess(fn: Hook<[result: unknown]>): IHandleLoadingBuilder {
+    return this.with({ onSuccess: [...(this.options.onSuccess ?? []), fn] })
   }
 
-  setError(fn: Hook<[error: unknown]>): this {
-    this.options.onError!.push(fn)
-    return this
+  setError(fn: Hook<[error: unknown]>): IHandleLoadingBuilder {
+    return this.with({ onError: [...(this.options.onError ?? []), fn] })
   }
 
-  setFinally(fn: Hook<[]>): this {
-    this.options.onFinally!.push(fn)
-    return this
+  setFinally(fn: Hook<[]>): IHandleLoadingBuilder {
+    return this.with({ onFinally: [...(this.options.onFinally ?? []), fn] })
   }
 
-  setLoading(fn: (loading: boolean) => void): this {
-    this.options.setLoading = fn
-    return this
+  replaceSuccess(...fns: Hook<[result: unknown]>[]): IHandleLoadingBuilder {
+    return this.with({ onSuccess: fns })
   }
 
-  setValidateSuccess(fn: (result: unknown) => boolean): this {
-    this.options.validateSuccess = fn
-    return this
+  replaceError(...fns: Hook<[error: unknown]>[]): IHandleLoadingBuilder {
+    return this.with({ onError: fns })
   }
 
-  setValidateError(fn: (error: unknown) => boolean): this {
-    this.options.validateError = fn
-    return this
+  replaceFinally(...fns: Hook<[]>[]): IHandleLoadingBuilder {
+    return this.with({ onFinally: fns })
   }
 
-  setValidateFinally(fn: () => boolean): this {
-    this.options.validateFinally = fn
-    return this
+  setLoading(fn: (loading: boolean) => void): IHandleLoadingBuilder {
+    return this.with({ setLoading: fn })
   }
 
-  setHookError(fn: HookErrorHandler): this {
-    this.options.onHookError = fn
-    return this
+  setValidateBefore(fn: () => boolean | Promise<boolean>): IHandleLoadingBuilder {
+    return this.with({ validateBefore: fn })
+  }
+
+  setValidateSuccess(fn: (result: unknown) => boolean): IHandleLoadingBuilder {
+    return this.with({ validateSuccess: fn })
+  }
+
+  setValidateError(fn: (error: unknown) => boolean): IHandleLoadingBuilder {
+    return this.with({ validateError: fn })
+  }
+
+  setValidateFinally(fn: () => boolean): IHandleLoadingBuilder {
+    return this.with({ validateFinally: fn })
+  }
+
+  setHookError(fn: HookErrorHandler): IHandleLoadingBuilder {
+    return this.with({ onHookError: fn })
   }
 
   build(): HandleLoadingFn {
-    // Snapshot the hook arrays so hooks added to the builder after build() don't leak into this handler
-    const defaults: HandleLoadingOptions<unknown> = {
-      ...this.options,
-      onSuccess: [...(this.options.onSuccess ?? [])],
-      onError: [...(this.options.onError ?? [])],
-      onFinally: [...(this.options.onFinally ?? [])]
-    }
+    // No snapshot needed: this builder's options (and their hook arrays) are never mutated
+    const defaults = this.options
     return (callback, overrides = {}, ...args) => {
       // Hooks/validators typed for `unknown` are assignable to ones for `T`, so no casts are needed
       const merged: typeof overrides = {
         setLoading: overrides.setLoading ?? defaults.setLoading,
+        validateBefore: overrides.validateBefore ?? defaults.validateBefore,
         validateSuccess: overrides.validateSuccess ?? defaults.validateSuccess,
         validateError: overrides.validateError ?? defaults.validateError,
         validateFinally: overrides.validateFinally ?? defaults.validateFinally,
         onHookError: overrides.onHookError ?? defaults.onHookError,
-        onSuccess: [...(defaults.onSuccess ?? []), ...(overrides.onSuccess ?? [])],
-        onError: [...(defaults.onError ?? []), ...(overrides.onError ?? [])],
-        onFinally: [...(defaults.onFinally ?? []), ...(overrides.onFinally ?? [])]
+        // Per-call hook lists replace the builder's (same rule as the other options)
+        onSuccess: overrides.onSuccess ?? defaults.onSuccess,
+        onError: overrides.onError ?? defaults.onError,
+        onFinally: overrides.onFinally ?? defaults.onFinally
       }
       return handleLoading(callback, merged, ...args)
     }
